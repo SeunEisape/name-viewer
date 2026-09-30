@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NVBench Generations Viewer</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; font-size: 13px; color: #1a1a1a; }
+  header { padding: 10px 16px; background: #111; color: #fff; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .sub { font-size: 12px; opacity: .7; margin-top: 2px; }
+  header a { color: #8ec7ff; }
+  .layout { display: flex; height: calc(100vh - 52px); }
+  .sidebar { width: 420px; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+  .controls { padding: 10px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .controls label { font-size: 11px; color: #666; display: block; margin-bottom: 2px; }
+  .controls select, .controls input { width: 100%; padding: 4px; font-size: 12px; }
+  .controls .full { grid-column: 1 / -1; }
+  .filelist { overflow-y: auto; flex: 1; }
+  table { border-collapse: collapse; width: 100%; }
+  .filelist table th { position: sticky; top: 0; background: #f5f5f5; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; vertical-align: top; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f0f7ff; }
+  tr.selected { background: #dceeff !important; }
+  .pid { color: #888; font-size: 11px; }
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #detail { flex: 1; min-height: 0; }
+  #detail:not(.empty) { display: flex; flex-direction: column; }
+  .detail-head { flex: 0 0 auto; padding: 10px 16px; border-bottom: 1px solid #eee; }
+  .detail-head h2 { margin: 0 0 4px; font-size: 14px; }
+  .detail-head .prompt { font-size: 13px; color: #333; background:#f7f7f7; padding:6px 8px; border-radius:6px; }
+  .meta { font-size: 12px; color: #555; display: flex; gap: 14px; flex-wrap: wrap; margin-top:6px; }
+  .toolbar { padding: 8px 16px; display: flex; gap: 14px; align-items: center; border-bottom: 1px solid #eee; flex-wrap: wrap; }
+  .toolbar select { padding: 3px 6px; font-size: 12px; }
+  .cards { overflow-y: auto; flex: 1; min-height: 0; padding: 8px 16px; }
+  .card { border: 1px solid #e2e2e2; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .card > .chead { background: #f5f7fa; padding: 6px 10px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; border-bottom: 1px solid #eee; }
+  .card .model { font-weight: 600; }
+  .card .cond { padding: 1px 7px; border-radius: 10px; font-size: 11px; background:#e7edf5; color:#33506e; }
+  .card .framing { padding: 1px 7px; border-radius: 10px; font-size: 11px; background:#fdebd3; color:#8a5316; }
+  .card .cstat { color:#666; font-size: 11px; }
+  .gen { display: flex; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #f2f2f2; }
+  .gen:last-child { border-bottom: none; }
+  .cluster { flex: none; width: 24px; text-align: center; font-size: 11px; font-weight: 600;
+             border-radius: 4px; padding: 2px 0; height: fit-content; color: #222; }
+  .gen .body { flex: 1; }
+  .gen .txt { white-space: pre-wrap; word-break: break-word; }
+  /* background + ink are set inline from the reward ramp; the hairline keeps the bright
+     (high-quality) end of inferno reading as a pill against the white card. */
+  .score { flex: none; font-size: 11px; border-radius: 10px; padding: 1px 7px; height: fit-content;
+           border: 1px solid rgba(0,0,0,.25); min-width: 48px; text-align: center;
+           font-variant-numeric: tabular-nums; }
+  /* the v1.1 judge score is a 1-10 integer, so its badge is narrower than the raw reward's */
+  .score.v11 { min-width: 34px; }
+  .score.muted { background: none; color: #999; border: 1px dashed #ccc; }
+  /* an empty cell still takes its column, so the v1.0 and v1.1 columns never swap places */
+  .cluster.blank, .score.blank { visibility: hidden; }
+  .caps { display: flex; gap: 8px; padding: 3px 10px 0; font-size: 10px; color: #999; text-align: center; }
+  .caps .c-chip { flex: none; width: 24px; }
+  .caps .c-body { flex: 1; }
+  .caps .c-v10 { flex: none; min-width: 48px; }
+  .caps .c-v11 { flex: none; min-width: 34px; }
+  .card .mtag { font-weight: 600; color: #333; }
+  .rampkey { display: inline-flex; vertical-align: -1px; margin: 0 3px; }
+  .rampkey i { width: 10px; height: 10px; display: block; }
+  .rampkey i:first-child { border-radius: 2px 0 0 2px; }
+  .rampkey i:last-child { border-radius: 0 2px 2px 0; }
+  details.doc { margin-top: 4px; }
+  details.doc summary { cursor: pointer; color: #7a7a7a; font-size: 11px; }
+  details.doc pre { white-space: pre-wrap; word-break: break-word; background:#fafafa; border:1px solid #eee;
+                    padding:6px; border-radius:4px; font-size:11px; max-height: 220px; overflow:auto; }
+  .legend { font-size: 11px; color:#777; margin-top: 5px; line-height: 1.6; }
+  .empty { padding: 40px; text-align: center; color: #999; }
+</style>
+</head>
+<body>
+<header>
+  <h1>NVBench Generations Viewer</h1>
+  <div class="sub">Pick a prompt to see its N generations across every model &amp; run — colored by NoveltyBench partition cluster, under the v1.0 and the v1.1 (LLM-judge) metric.
+    &nbsp;·&nbsp; <a href="index.html">Unique Name Viewer →</a></div>
+</header>
+<div class="layout">
+  <div class="sidebar">
+    <div class="controls">
+      <div><label>Model</label><select id="f-model"></select></div>
+      <div><label>Condition</label><select id="f-condition"></select></div>
+      <div><label>Doc framing</label><select id="f-framing"></select></div>
+      <div><label>Run (rep)</label><select id="f-rep"></select></div>
+      <div><label>Metric shown</label>
+        <select id="f-metric">
+          <option value="both">v1.0 + v1.1</option>
+          <option value="v11">v1.1 only (LLM judges)</option>
+          <option value="v10">v1.0 only (classifier + reward model)</option>
+        </select></div>
+      <div><label>v1.1 data</label>
+        <select id="f-v11">
+          <option value="">(all)</option>
+          <option value="distinct">has v1.1 distinct</option>
+          <option value="utility">has v1.1 utility</option>
+          <option value="declined">utility declined by the judges</option>
+          <option value="fallback">scored in part by the fallback judge</option>
+        </select></div>
+      <div class="full"><label>Sort prompts</label>
+        <select id="f-sort">
+          <option value="id">prompt id</option>
+          <option value="text">prompt text</option>
+        </select></div>
+      <div class="full"><label>Prompt text contains</label><input id="f-q" type="text" placeholder="e.g. book, filly, color"></div>
+    </div>
+    <div class="filelist">
+      <table>
+        <thead><tr><th>prompt</th><th>runs</th></tr></thead>
+        <tbody id="promptrows"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="main">
+    <div id="detail" class="empty">Select a prompt on the left to view its generations.</div>
+  </div>
+</div>
+
+<script>
+// Split for cheap static hosting: a small nvbench_index.json (prompt list) up front,
+// plus one lazy-loaded detail shard per prompt under nvbench_details/<id>.json.
+let DATA = [];
+let selectedId = null;
+const shardCache = new Map();  // id -> Promise<{id, prompt, entries}>
+
+// Base conditions, each optionally carrying a doc-framing tag: `random_utde` is the
+// random-doc condition under the production user-task-description framing (same docs,
+// same reps as plain `random`, so the pair is directly comparable). Kept in sync with
+// utils/build_nvbench_viewer.py, which emits these keys plus a per-entry `framing`.
+const BASE_CONDITIONS = {normal:'normal', prompt:'prompt', random:'random-doc', promptplusrandom:'prompt+doc'};
+const FRAMING_LABEL = {legacy:'legacy (bare prepend)', utde:'framed (user task desc)'};
+const FRAMING_SHORT = {utde:'framed'};
+// each base immediately followed by its framed variants, so the pair sorts adjacent
+const CONDITION_ORDER = Object.keys(BASE_CONDITIONS).flatMap(
+  b => [b, ...Object.keys(FRAMING_SHORT).map(t=>`${b}_${t}`)]);
+const CONDITION_LABEL = Object.fromEntries(Object.entries(BASE_CONDITIONS).flatMap(
+  ([b,l]) => [[b,l], ...Object.entries(FRAMING_SHORT).map(([t,s])=>[`${b}_${t}`, `${l} (${s})`])]));
+// Distinct-ish palette; same partition cluster id -> same color, so diversity is visible at a glance.
+const PALETTE = ['#c7e9c0','#fdd0a2','#c6dbef','#dadaeb','#fcbba1','#d9f0a3','#fde0ef','#ccece6',
+                 '#e5d8bd','#f2f0a1','#bcbddc','#a1d99b','#9ecae1','#fdae6b','#fa9fb5','#a6bddb'];
+
+// Badges show generation_raw_rewards (the raw reward-model logit), shaded by the quality
+// bucket NoveltyBench would assign it. Bin edges mirror novelty-bench/src/score.py:19-34:
+//   transform_raw_reward(r) = bisect_left(reward_thresholds, r) + 1  ->  1..10
+const REWARD_THRESHOLDS = [-7.71875,-6.28125,-6.0,-5.71875,-5.5,-5.0,-4.375,-3.4375,-2.046875];
+// matplotlib's inferno, sampled at the 10 bin centres ((i+0.5)/10) since the buckets are
+// bins, not points. Dark->bright = bucket 1->10, per the colormap's convention.
+// Reproduce with:  [mpl.colors.to_hex(colormaps['inferno'](x)) for x in (np.arange(10)+.5)/10]
+const REWARD_RAMP = ['#07051b','#2b0b57','#57106e','#7f1e6c','#a82e5f',
+                     '#cc4248','#ea632a','#f98e09','#fbbe23','#f1ef75'];
+
+function rewardBucket(r){   // JS equivalent of Python's bisect_left, +1
+  let lo = 0, hi = REWARD_THRESHOLDS.length;
+  while(lo < hi){ const mid = (lo + hi) >> 1; if(REWARD_THRESHOLDS[mid] < r) lo = mid + 1; else hi = mid; }
+  return lo + 1;
+}
+
+function bucketRange(b){
+  const lo = b === 1 ? '-inf' : REWARD_THRESHOLDS[b-2];
+  const hi = b === 10 ? '+inf' : REWARD_THRESHOLDS[b-1];
+  return `${lo} to ${hi}`;
+}
+
+// NoveltyBench v1.1 rides along in each entry's `v11` (absent when the run has no v1.1
+// partition): an LLM partitions the 10 generations, and a second judge scores the FIRST
+// response of each class 1-10, so `scores` is null for every repeat. A score is already
+// a 1-10 bucket and takes REWARD_RAMP[score-1] directly. `scored` says the utility stage
+// ran; with it set and no numeric `utility`, every judge declined the instance.
+const V11_FILTERS = {
+  distinct: v => !!v,
+  utility:  v => !!v && typeof v.utility === 'number',
+  declined: v => !!v && !!v.scored && typeof v.utility !== 'number',
+  fallback: v => !!v && !!v.fallback_judge,
+};
+
+// index of the first generation of each class (novelty-bench/src/score.py:heads)
+function classHeads(partition){
+  const seen = new Set(), out = [];
+  partition.forEach((c,i)=>{ if(!seen.has(c)){ seen.add(c); out.push(i); } });
+  return out;
+}
+
+// Shards are gzipped to fit the static host's size limit. Check the magic bytes rather
+// than trusting the extension: a server that sends .gz with Content-Encoding: gzip has
+// already inflated it by the time fetch hands it over.
+async function fetchGzipJson(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(`${url}: ${r.status}`);
+  const buf = await r.arrayBuffer();
+  const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+  if(head[0] === 0x1f && head[1] === 0x8b){
+    const inflated = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return JSON.parse(await new Response(inflated).text());
+  }
+  return JSON.parse(new TextDecoder().decode(buf));
+}
+
+function loadShard(id){
+  if(!shardCache.has(id)) shardCache.set(id, fetchGzipJson(`nvbench_details/${id}.json.gz`));
+  return shardCache.get(id);
+}
+
+function uniq(arr){ return [...new Set(arr)].sort(); }
+function uniqNum(arr){ return [...new Set(arr.map(Number))].sort((a,b)=>a-b); }
+function uniqCond(arr){
+  const s = new Set(arr);
+  return [...CONDITION_ORDER.filter(c=>s.has(c)), ...[...s].filter(c=>!CONDITION_ORDER.includes(c)).sort()];
+}
+function fill(sel, vals, labeler){
+  const el = document.getElementById(sel);
+  el.innerHTML = '<option value="">(all)</option>' +
+    vals.map(v=>`<option value="${v}">${labeler?labeler(v):v}</option>`).join('');
+}
+function escapeHtml(s){ return String(s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function currentFilters(){
+  return {
+    model: document.getElementById('f-model').value,
+    condition: document.getElementById('f-condition').value,
+    framing: document.getElementById('f-framing').value,
+    rep: document.getElementById('f-rep').value,
+    metric: document.getElementById('f-metric').value,
+    v11: document.getElementById('f-v11').value,
+    q: document.getElementById('f-q').value.toLowerCase(),
+    sort: document.getElementById('f-sort').value,
+  };
+}
+
+function filteredPrompts(){
+  const f = currentFilters();
+  let rows = DATA.filter(d=>
+    (!f.model || d.models.includes(f.model)) &&
+    (!f.condition || d.conditions.includes(f.condition)) &&
+    (!f.framing || (d.framings||['legacy']).includes(f.framing)) &&
+    (!f.rep || d.reps.map(String).includes(f.rep)) &&
+    (!f.v11 || (d.v11 && d.v11[f.v11] > 0)) &&
+    (!f.q ||(d.prompt||'').toLowerCase().includes(f.q) || d.id.toLowerCase().includes(f.q))
+  );
+  const idKey = d => { const m=d.id.match(/^(.*?)(\d+)$/); return m?[m[1], +m[2]]:[d.id,0]; };
+  rows.sort((a,b)=>{
+    if(f.sort==='text') return (a.prompt||'').localeCompare(b.prompt||'');
+    const ka=idKey(a), kb=idKey(b);
+    return ka[0].localeCompare(kb[0]) || ka[1]-kb[1];
+  });
+  return rows;
+}
+
+function renderPromptList(){
+  const rows = filteredPrompts();
+  const tb = document.getElementById('promptrows');
+  tb.innerHTML = rows.map(d=>`
+    <tr data-id="${d.id}" class="${d.id===selectedId?'selected':''}">
+      <td><div>${escapeHtml(d.prompt||'(no prompt text)')}</div>
+          <div class="pid">${d.id}</div></td>
+      <td>${d.n_entries}</td></tr>`).join('')
+    || '<tr><td colspan="2" style="color:#999;padding:20px">no prompts match</td></tr>';
+  tb.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>{
+    selectedId = tr.dataset.id; renderPromptList(); renderDetail();
+  });
+  document.querySelector('.filelist').scrollTop = 0;
+}
+
+function clusterChip(pid, version){
+  if(pid===null || pid===undefined) return '<div class="cluster blank"></div>';
+  const bg = PALETTE[((pid%PALETTE.length)+PALETTE.length)%PALETTE.length];
+  return `<div class="cluster" style="background:${bg}" title="${version} partition cluster ${pid}">${pid}</div>`;
+}
+
+function rewardLegendSwatches(title){
+  return `<span class="rampkey">${REWARD_RAMP.map((c,i)=>
+    `<i style="background:${c}" title="${title(i+1)}"></i>`).join('')}</span>`;
+}
+
+function fileMeans(distinct, utility){
+  const parts = [];
+  if(typeof distinct === 'number') parts.push(`distinct ${distinct.toFixed(2)}`);
+  if(typeof utility === 'number') parts.push(`utility ${utility.toFixed(2)}`);
+  return parts.length ? [`file mean: ${parts.join(', ')}`] : [];
+}
+
+function v10Stats(e){
+  const stats = [];
+  // The upstream v1.0 "distinct" field is max(partition) (partition.py:238), i.e. one short
+  // of the actual cluster count. Derive the real count from the partition itself; fall back
+  // to distinct+1 only if partition is missing.
+  const nClusters = e.partition ? new Set(e.partition).size
+                  : (typeof e.distinct === 'number' ? e.distinct + 1 : null);
+  if(nClusters !== null) stats.push(`distinct: <b>${nClusters}</b>`);
+  if(typeof e.utility === 'number') stats.push(`utility: ${e.utility.toFixed(2)}`);
+  return [...stats, ...fileMeans(e.mean_distinct, e.mean_utility)];
+}
+
+function v11Stats(v){
+  if(!v) return ['not partitioned'];
+  const stats = [`distinct: <b>${new Set(v.partition).size}</b>`];
+  if(!v.scored) stats.push('utility: not scored yet');
+  else if(typeof v.utility !== 'number') stats.push(`utility: declined by the judges (${escapeHtml(v.unscored||'unscored')})`);
+  else {
+    const nFb = (v.fallback_calls||[]).length;
+    stats.push(`utility: ${v.utility.toFixed(2)}` + (v.fallback_judge
+      ? ` (${nFb} class${nFb===1?'':'es'} scored by ${escapeHtml(v.fallback_judge)})` : ''));
+  }
+  return [...stats, ...fileMeans(v.mean_distinct, v.mean_utility)];
+}
+
+function v10Badge(rr){
+  if(typeof rr !== 'number') return '<span class="score blank"></span>';
+  const b = rewardBucket(rr);
+  return `<span class="score" style="background:${REWARD_RAMP[b-1]};color:${b>=7?'#111111':'#ffffff'}"
+    title="v1.0 raw reward ${rr} &#10;quality bucket ${b}/10 (${bucketRange(b)})">${rr.toFixed(2)}</span>`;
+}
+
+// headRank: generation index -> its position among the class heads, which is how
+// fallback_calls (fb) names the heads the fallback judge scored.
+function v11Badge(v, i, headRank, fb){
+  if(!v || !v.scored) return '<span class="score v11 blank"></span>';
+  if(!headRank.has(i))
+    return `<span class="score v11 muted" title="repeat of class ${v.partition[i]}: v1.1 judges only the first response of each class, and a repeat is credited 0">–</span>`;
+  const s = v.scores ? v.scores[i] : null;
+  if(typeof s !== 'number')
+    return `<span class="score v11 muted" title="no score: the judges declined this instance (${escapeHtml(v.unscored||'unscored')})">n/a</span>`;
+  const viaFallback = fb.has(headRank.get(i));
+  const judge = viaFallback ? `${v.fallback_judge}, the fallback judge` : (v.utility_judge || 'judge unknown');
+  return `<span class="score v11" style="background:${REWARD_RAMP[s-1]};color:${s>=7?'#111111':'#ffffff'}"
+    title="v1.1 judge score ${s}/10 (${escapeHtml(judge)})">${s}${viaFallback?'*':''}</span>`;
+}
+
+// docTable: the shard's deduplicated doc previews; e.doc_ids indexes into it per generation.
+// metric: 'both' | 'v10' | 'v11' -- which metric's chips, badges and stats the card carries.
+function renderCard(e, docTable, metric){
+  const cond = CONDITION_LABEL[e.condition] || e.condition_label || e.condition;
+  const framing = e.framing || 'legacy';
+  const showV10 = metric !== 'v11', showV11 = metric !== 'v10', both = showV10 && showV11;
+  const v = e.v11;
+  const headRank = new Map((v ? classHeads(v.partition) : []).map((g,k)=>[g,k]));
+  const fb = new Set((v && v.fallback_calls) || []);
+  const statGroups = [];
+  if(showV10){
+    const s = v10Stats(e);
+    if(s.length) statGroups.push(`${both?'<span class="mtag">v1.0</span> ':''}${s.join(' · ')}`);
+  }
+  if(showV11) statGroups.push(`${both?'<span class="mtag">v1.1</span> ':''}${v11Stats(v).join(' · ')}`);
+  const gens = e.generations.map((g,i)=>{
+    const doc = e.doc_ids && e.doc_ids[i] !== undefined ? docTable[e.doc_ids[i]] : null;
+    const truncated = doc && doc.len > doc.preview.length;
+    const docBlock = doc ? `<details class="doc"><summary>prepended doc (${doc.len.toLocaleString()} chars${truncated?', preview':''})</summary><pre>${escapeHtml(doc.preview)}${truncated?'\n…(truncated)':''}</pre></details>` : '';
+    return `<div class="gen">${showV10 ? clusterChip(e.partition ? e.partition[i] : undefined, 'v1.0') : ''}${showV11 ? clusterChip(v ? v.partition[i] : undefined, 'v1.1') : ''}
+      <div class="body"><div class="txt">${escapeHtml(g)}</div>${docBlock}</div>
+      ${showV10 ? v10Badge(e.raw_rewards ? e.raw_rewards[i] : undefined) : ''}${showV11 ? v11Badge(v, i, headRank, fb) : ''}</div>`;
+  }).join('');
+  // with both metrics on a row, say which chip and which badge is which
+  const caps = both ? `<div class="caps"><span class="c-chip">v1.0</span><span class="c-chip">v1.1</span>
+      <span class="c-body"></span><span class="c-v10">v1.0 reward</span><span class="c-v11">v1.1</span></div>` : '';
+  return `<div class="card">
+    <div class="chead">
+      <span class="model">${escapeHtml(e.model)}</span>
+      <span class="cond">${escapeHtml(cond)}</span>
+      ${framing!=='legacy' ? `<span class="framing" title="doc framing: ${escapeHtml(FRAMING_LABEL[framing]||framing)}">${escapeHtml(FRAMING_SHORT[framing]||framing)}</span>` : ''}
+      <span class="cstat">rep ${e.rep}</span>
+      ${statGroups.map(s=>`<span class="cstat">${s}</span>`).join('')}
+    </div>${caps}${gens}</div>`;
+}
+
+// A prompt carries ~800 model/run cards (~8k generations) once every model is in; building
+// them all in one innerHTML freezes the tab, so cards are appended in batches as the
+// list scrolls toward its end.
+const CARD_BATCH = 40;
+let cardObserver = null;
+
+function renderCardsIncrementally(container, entries, docTable, metric){
+  if(cardObserver) cardObserver.disconnect();  // a previous render's list
+  let shown = 0;
+  const more = document.createElement('div');
+  more.className = 'empty';
+  container.appendChild(more);
+  cardObserver = new IntersectionObserver((obs, observer)=>{
+    if(!obs.some(o=>o.isIntersecting)) return;
+    const batch = entries.slice(shown, shown + CARD_BATCH);
+    more.insertAdjacentHTML('beforebegin', batch.map(e=>renderCard(e, docTable, metric)).join(''));
+    shown += batch.length;
+    if(shown >= entries.length){ observer.disconnect(); more.remove(); return; }
+    more.textContent = `showing ${shown} of ${entries.length} cards — scroll for more`;
+    // an observer only fires on a CHANGE in intersection; if the sentinel is still in
+    // range after this batch, re-observing forces a fresh check for the next one
+    observer.unobserve(more); observer.observe(more);
+  }, {root: container, rootMargin: '0px 0px 2000px 0px'});
+  cardObserver.observe(more);
+}
+
+async function renderDetail(){
+  const el = document.getElementById('detail');
+  if(selectedId===null){ el.className='empty'; el.textContent='Select a prompt.'; return; }
+  const id = selectedId;
+  el.className='empty'; el.textContent='Loading…';
+  let shard;
+  try { shard = await loadShard(id); }
+  catch(err){ if(selectedId===id){ el.className='empty'; el.textContent='Failed to load: '+err.message; } return; }
+  if(selectedId!==id) return;  // a different prompt was clicked while fetching
+
+  const f = currentFilters();
+  const entries = shard.entries.filter(e=>
+    (!f.model || e.model===f.model) &&
+    (!f.condition || e.condition===f.condition) &&
+    (!f.framing || (e.framing||'legacy')===f.framing) &&
+    (!f.rep || String(e.rep)===f.rep) &&
+    (!f.v11 || V11_FILTERS[f.v11](e.v11))
+  );
+  el.className='';
+  const nModels = new Set(entries.map(e=>e.model)).size;
+  const showV10 = f.metric !== 'v11', showV11 = f.metric !== 'v10';
+  const nV11 = k => entries.filter(e=>V11_FILTERS[k](e.v11)).length;
+  // judges are read off the data, so a cell judged by anything else shows up here
+  const named = key => uniq(shard.entries.map(e=>e.v11 && e.v11[key]).filter(Boolean)).map(escapeHtml).join(', ');
+  const fallbackJudge = named('fallback_judge');
+  const legend = [];
+  if(showV10) legend.push(`<b>v1.0</b> chip = partition cluster (classifier) · badge = raw reward of
+    every generation, shaded by quality bucket
+    ${rewardLegendSwatches(b=>`bucket ${b}: raw reward ${bucketRange(b)}`)} 1→10`);
+  if(showV11) legend.push(`<b>v1.1</b> chip = partition cluster (judge ${named('partition_judge')||'n/a'}) ·
+    badge = judge score of the first response of each class (judge ${named('utility_judge')||'none yet'}),
+    shaded ${rewardLegendSwatches(s=>`score ${s}/10`)} 1→10 · – = repeat, not judged
+    ${fallbackJudge ? ` · * = scored by the fallback judge ${fallbackJudge}` : ''}`);
+  el.innerHTML = `
+    <div class="detail-head">
+      <h2>${shard.id}</h2>
+      <div class="prompt">${escapeHtml(shard.prompt||'(no prompt text)')}</div>
+      <div class="meta">
+        <span>${entries.length} model/run cards</span>
+        <span>${nModels} models</span>
+        ${showV11 ? `<span>v1.1: ${nV11('distinct')} with distinct · ${nV11('utility')} with utility · ${nV11('declined')} declined</span>` : ''}
+      </div>
+      <div class="legend">${legend.join('<br>')}</div>
+    </div>
+    <div class="cards" id="cards"></div>`;
+  const cards = document.getElementById('cards');
+  if(entries.length) renderCardsIncrementally(cards, entries, shard.doc_table, f.metric);
+  else cards.innerHTML = '<div class="empty">No runs match the current model/condition/framing/rep/v1.1 filters.</div>';
+}
+
+['f-model','f-condition','f-framing','f-rep','f-metric','f-v11','f-sort'].forEach(id=>
+  document.getElementById(id).onchange=()=>{ renderPromptList(); renderDetail(); });
+document.getElementById('f-q').oninput=()=>{ renderPromptList(); };
+
+async function init(){
+  const detail = document.getElementById('detail');
+  detail.className='empty'; detail.textContent='Loading index…';
+  try {
+    DATA = await fetch('nvbench_index.json').then(r=>{
+      if(!r.ok) throw new Error(`nvbench_index.json: ${r.status}`);
+      return r.json();
+    });
+  } catch(err){
+    detail.className='empty';
+    detail.textContent='Failed to load nvbench_index.json ('+err.message+'). Serve this folder over HTTP (e.g. `make view_nvbench_viewer`).';
+    return;
+  }
+  fill('f-model', uniq(DATA.flatMap(d=>d.models)));
+  fill('f-condition', uniqCond(DATA.flatMap(d=>d.conditions)), c=>CONDITION_LABEL[c]||c);
+  fill('f-framing', uniq(DATA.flatMap(d=>d.framings||['legacy'])), t=>FRAMING_LABEL[t]||t);
+  fill('f-rep', uniqNum(DATA.flatMap(d=>d.reps)));
+  detail.textContent='Select a prompt on the left to view its generations.';
+  renderPromptList();
+}
+init();
+</script>
+</body>
+</html>

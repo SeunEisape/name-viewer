@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unique Name Viewer</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; font-size: 13px; color: #1a1a1a; }
+  header { padding: 10px 16px; background: #111; color: #fff; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .sub { font-size: 12px; opacity: .7; margin-top: 2px; }
+  header a { color: #8ec7ff; }
+  .layout { display: flex; height: calc(100vh - 52px); }
+  .sidebar { width: 460px; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+  .controls { padding: 10px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .controls label { font-size: 11px; color: #666; display: block; margin-bottom: 2px; }
+  .controls select, .controls input { width: 100%; padding: 4px; font-size: 12px; }
+  .controls .full { grid-column: 1 / -1; }
+  .filelist { overflow-y: auto; flex: 1; }
+  .filecount { padding: 4px 10px; font-size: 11px; color: #888; border-bottom: 1px solid #eee; }
+  table { border-collapse: collapse; width: 100%; }
+  .filelist table th { position: sticky; top: 0; background: #f5f5f5; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f0f7ff; }
+  tr.selected { background: #dceeff !important; }
+  .delta-pos { color: #157f3b; font-weight: 600; }
+  .delta-neg { color: #b00020; font-weight: 600; }
+  .na { color: #bbb; }
+  .kchip { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 3px; background: #eef2f7; color: #345; margin-left: 4px; }
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #detail { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  #detail.empty { display: block; }
+  #detailbody { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  #detailbody.empty { display: block; }
+  .detail-head { padding: 10px 16px; border-bottom: 1px solid #eee; }
+  .detail-head h2 { margin: 0 0 4px; font-size: 14px; word-break: break-all; }
+  .meta { font-size: 12px; color: #555; display: flex; gap: 16px; flex-wrap: wrap; }
+  .meta + .meta { margin-top: 3px; }
+  .toolbar { padding: 8px 16px; display: flex; gap: 14px; align-items: center; border-bottom: 1px solid #eee; flex-wrap: wrap; }
+  .toolbar input[type=text] { padding: 4px 6px; font-size: 12px; width: 220px; }
+  .badge { padding: 2px 7px; border-radius: 10px; font-size: 11px; }
+  .badge.counted { background: #e3f6ea; color: #157f3b; }
+  .badge.incorrect { background: #fde7ea; color: #b00020; }
+  .badge.unmarked { background: #fff3d6; color: #8a5b00; }
+  .badge.dropped { background: #eee; color: #555; }
+  .badge.new { background: #e6f0ff; color: #1b4f9c; }
+  .names { overflow-y: auto; flex: 1; }
+  .names table th { position: sticky; top: 0; background: #f5f5f5; cursor: pointer; }
+  .row-incorrect { background: #fdf1f3; }
+  .row-unmarked { background: #fff9ea; }
+  .row-dropped { background: #f4f4f4; }
+  .row-new { background: #f0f5ff; }
+  .tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+  .tag.incorrect { background: #fde7ea; color: #b00020; }
+  .tag.unmarked { background: #fff3d6; color: #8a5b00; }
+  .tag.dropped { background: #e4e4e4; color: #444; }
+  .tag.new { background: #dce8ff; color: #1b4f9c; }
+  .tag.mismatch { background: #fff3d6; color: #8a5b00; }
+  .tag.status { background: #eee; color: #555; }
+  .empty { padding: 40px; text-align: center; color: #999; }
+  /* view toggle: extracted names vs raw completions */
+  .viewtabs { margin-top: 8px; display: flex; gap: 0; }
+  .viewtabs label { padding: 4px 12px; font-size: 12px; border: 1px solid #ccc; cursor: pointer; background: #fafafa; }
+  .viewtabs label:first-of-type { border-radius: 4px 0 0 4px; }
+  .viewtabs label:last-of-type { border-radius: 0 4px 4px 0; border-left: 0; }
+  .viewtabs label.on { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .viewtabs label.off { color: #bbb; cursor: not-allowed; }
+  .viewtabs input { display: none; }
+  .rare-link { color: #0b62c4; cursor: pointer; text-decoration: underline dotted; }
+  /* raw view */
+  .raws { overflow-y: auto; flex: 1; padding: 10px 16px; }
+  .gen { border: 1px solid #e4e4e4; border-radius: 5px; padding: 8px 10px; margin-bottom: 8px; }
+  .gen .ghead { font-size: 11px; color: #888; margin-bottom: 4px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .gen .txt { white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+  .gen .ext { margin-top: 6px; font-size: 12px; color: #444; border-top: 1px dashed #e4e4e4; padding-top: 5px; white-space: pre-wrap; word-break: break-word; }
+  .gen .ext b { color: #157f3b; }
+  .gen .ext .mk { background: #fde7ea; color: #b00020; border-radius: 3px; padding: 0 3px; font-weight: 600; }
+  .gen .ext .pre { color: #8a5b00; font-style: italic; }
+  .gen.mismatch { border-color: #f0c96a; background: #fffdf6; }
+  .gen details.doc { margin-top: 6px; }
+  .gen details.doc summary { cursor: pointer; font-size: 11px; color: #666; }
+  .gen details.doc pre { white-space: pre-wrap; word-break: break-word; font-size: 11px;
+                         background: #fafafa; border: 1px solid #eee; padding: 6px; margin: 5px 0 0; }
+  .warn { margin: 10px 16px 0; padding: 7px 10px; border-radius: 4px; font-size: 12px;
+          background: #fff3d6; color: #6b4700; border: 1px solid #f0c96a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Unique Name Viewer</h1>
+  <div class="sub">Unique names per extracted file.
+    Toggle a file between its names and the raw completions behind them.
+    &nbsp;·&nbsp; <a href="nvbench.html">NVBench Generations Viewer →</a></div>
+</header>
+<div class="layout">
+  <div class="sidebar">
+    <div class="controls">
+      <div><label>Source</label><select id="f-source"></select></div>
+      <div><label>Condition</label><select id="f-condition"></select></div>
+      <div><label>Model</label><select id="f-model"></select></div>
+      <div><label>Category</label><select id="f-category"></select></div>
+      <div><label>List length k (items per answer)</label><select id="f-k"></select></div>
+      <div><label>Replicate</label><select id="f-replicate"></select></div>
+      <div><label>Temp</label><select id="f-temp"></select></div>
+      <div><label>Sort files by</label>
+        <select id="f-sort">
+          <option value="counted">unique (counted)</option>
+          <option value="old">unique (old rule)</option>
+          <option value="delta">|Δ| counted − old rule</option>
+          <option value="incorrect">marked incorrect (unique)</option>
+          <option value="unmarked">unmarked rows</option>
+          <option value="name">source / condition / model / task</option>
+        </select>
+      </div>
+      <div class="full"><label>File name contains</label><input id="f-file" type="text" placeholder="e.g. extracted_gemini, temp_10.0"></div>
+    </div>
+    <div class="filecount" id="filecount"></div>
+    <div class="filelist">
+      <table>
+        <thead><tr><th>source · condition · model / task</th>
+          <th title="unique names counted under the production rule">counted</th>
+          <th title="unique names under the rule before 2026-09-29 (k = 1 and 3 only)">old</th>
+          <th title="counted − old">Δ</th></tr></thead>
+        <tbody id="filerows"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="main">
+    <div id="detail" class="empty">Select a file on the left to view its unique names.</div>
+  </div>
+</div>
+
+<script>
+// Data is split for cheap static hosting: a small index.json.gz (file-list metadata)
+// loaded up front, plus per-group detail shards fetched lazily on click.
+let DATA = [];
+let selectedIdx = null;
+const shardCache = new Map();  // shard id -> Promise<{ key: {counted, old, incorrect, unmarked} }>
+const STATUSES = ['ok', 'count', 'unmarked', 'none', 'error'];   // build_name_viewer.STATUSES
+const STATUS_HELP = {
+  ok: 'a plain list', count: 'a count preamble ("Multiple ...", "Not three ..."): the names after it count',
+  unmarked: 'a membership preamble whose wrong item is not marked: nothing counts until re-extracted',
+  none: 'nothing extracted ("No ... mentioned.")', error: 'extractor failure',
+};
+
+// Shards are gzipped so the published site stays inside its size limit (see
+// build_name_viewer.py). Check the magic bytes rather than trusting the extension: a
+// host that sends .gz with Content-Encoding: gzip has already inflated it by the time
+// fetch hands it over.
+async function fetchGzipJson(url, missingOk){
+  const r = await fetch(url);
+  if(missingOk && r.status === 404) return null;
+  if(!r.ok) throw new Error(`${url}: ${r.status}`);
+  const buf = await r.arrayBuffer();
+  const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+  if(head[0] === 0x1f && head[1] === 0x8b){
+    const inflated = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return JSON.parse(await new Response(inflated).text());
+  }
+  return JSON.parse(new TextDecoder().decode(buf));
+}
+
+function loadShard(shard){
+  if(!shardCache.has(shard)) shardCache.set(shard, fetchGzipJson(`details/${shard}.json.gz`));
+  return shardCache.get(shard);
+}
+
+// The raw tier is one file per extracted file (raw/<raw_id>.json) and is optional:
+// it is built only by `make build_name_viewer_with_raw` and is not published.
+const rawCache = new Map();
+function loadRaw(rawId){
+  if(!rawCache.has(rawId)){
+    rawCache.set(rawId, fetch(`raw/${rawId}.json`).then(r=>{
+      if(r.status===404) return null;
+      if(!r.ok) throw new Error(`raw ${rawId}: ${r.status}`);
+      return r.json();
+    }));
+  }
+  return rawCache.get(rawId);
+}
+
+const CONDITION_ORDER = ['normal','diversity','random','prompt+random'];
+function uniq(arr){ return [...new Set(arr)].sort(); }
+function uniqNum(arr){ return [...new Set(arr.map(String))].sort((a,b)=>parseFloat(a)-parseFloat(b)); }
+function uniqCond(arr){
+  const s=new Set(arr.map(String));
+  return [...CONDITION_ORDER.filter(c=>s.has(c)), ...[...s].filter(c=>!CONDITION_ORDER.includes(c)).sort()];
+}
+function fill(sel, vals, labels){
+  const el = document.getElementById(sel);
+  el.innerHTML = '<option value="">(all)</option>' + vals.map(v=>`<option value="${v}">${labels?labels(v):v}</option>`).join('');
+}
+const kLabel = k => k==='' ? '(all)' : (k==='null' ? '(not a list task)' : `k = ${k}`);
+
+function currentFilters(){
+  return {
+    source: document.getElementById('f-source').value,
+    condition: document.getElementById('f-condition').value,
+    model: document.getElementById('f-model').value,
+    category: document.getElementById('f-category').value,
+    k: document.getElementById('f-k').value,
+    replicate: document.getElementById('f-replicate').value,
+    temp: document.getElementById('f-temp').value,
+    file: document.getElementById('f-file').value.toLowerCase(),
+    sort: document.getElementById('f-sort').value,
+  };
+}
+
+const hasOld = d => typeof d.n_unique_old === 'number';
+const delta = d => hasOld(d) ? d.n_unique - d.n_unique_old : 0;
+
+function filteredFiles(){
+  const f = currentFilters();
+  let rows = DATA.map((d,i)=>({d,i})).filter(({d})=>
+    (!f.source || d.source===f.source) &&
+    (!f.condition || d.condition===f.condition) &&
+    (!f.model || d.model===f.model) &&
+    (!f.category || d.category===f.category) &&
+    (!f.k || String(d.k)===f.k) &&
+    (!f.replicate || String(d.replicate)===f.replicate) &&
+    (!f.temp || String(d.temp)===f.temp) &&
+    (!f.file || d.file.toLowerCase().includes(f.file))
+  );
+  const nameKey = d => `${d.source}|${d.condition}|${d.model}|${d.category}|${String(d.k??0).padStart(5,'0')}|${d.replicate}|${(''+d.temp).padStart(6,'0')}`;
+  rows.sort((a,b)=>{
+    if(f.sort==='delta') return Math.abs(delta(b.d))-Math.abs(delta(a.d));
+    if(f.sort==='old') return (b.d.n_unique_old||0)-(a.d.n_unique_old||0);
+    if(f.sort==='counted') return b.d.n_unique-a.d.n_unique;
+    if(f.sort==='incorrect') return b.d.n_unique_incorrect-a.d.n_unique_incorrect;
+    if(f.sort==='unmarked') return b.d.status[2]-a.d.status[2];
+    return nameKey(a.d).localeCompare(nameKey(b.d));
+  });
+  return rows;
+}
+
+function renderFileList(){
+  const rows = filteredFiles();
+  const tb = document.getElementById('filerows');
+  document.getElementById('filecount').textContent =
+    `${rows.length.toLocaleString()} of ${DATA.length.toLocaleString()} files`;
+  tb.innerHTML = rows.map(({d,i})=>{
+    const dl = delta(d);
+    const cls = dl>0 ? 'delta-pos' : (dl<0 ? 'delta-neg' : '');
+    const sign = dl>0?'+':'';
+    const old = hasOld(d) ? d.n_unique_old : '<span class="na" title="the old rule is only defined for k = 1 and 3">–</span>';
+    const dcell = hasOld(d) ? `${sign}${dl}` : '';
+    const kchip = d.k!=null ? `<span class="kchip" title="items per answer · answers in the file">k=${d.k} · ${d.total_lines}</span>` : '';
+    return `<tr data-idx="${i}" class="${i===selectedIdx?'selected':''}">
+      <td><div style="font-weight:600">${d.source} · ${d.condition}</div>
+          <div style="color:#555">${d.model}</div>
+          <div style="color:#777">${d.task}${kchip}</div>
+          <div style="color:#aaa;font-size:11px">rep ${d.replicate} · temp ${d.temp} · ${d.file}</div></td>
+      <td>${d.n_unique}</td><td>${old}</td>
+      <td class="${cls}">${dcell}</td></tr>`;
+  }).join('');
+  tb.querySelectorAll('tr').forEach(tr=>tr.onclick=()=>{ selectedIdx=+tr.dataset.idx; renderFileList(); renderDetail(); });
+  document.querySelector('.filelist').scrollTop = 0;
+}
+
+let nameSearch = '', nameSort = 'counted', nameShow = 'all';
+// Which pane the detail view shows. Kept module-level so it survives clicking a
+// different file — you usually want to stay in the view you were reading.
+let viewMode = 'extracted';   // 'extracted' | 'raw'
+let rawName = '';             // normalized name selected in the raw view ('' = all)
+let rawSearch = '';
+const RAW_CARD_LIMIT = 300;   // cards rendered at once; the rest are reachable via filters
+
+function statusSummary(d){
+  return STATUSES.map((s,i)=>d.status[i] ? `<span title="${STATUS_HELP[s]}">${s} ${d.status[i]}</span>` : '')
+    .filter(Boolean).join(' · ');
+}
+
+function detailHead(d){
+  const raw = viewMode==='raw';
+  const can = !!d.has_raw;
+  // n_rare is absent when raw/ was built by an earlier run than this index
+  // (a plain `make build_name_viewer` keeps the raw tier but not its counts).
+  const rawLabel = !can ? 'raw data (not built)'
+                 : (d.n_rare != null ? `raw data (${d.n_rare} names, ${d.n_raw_lines} completions)` : 'raw data');
+  const rawTitle = can ? 'The completions behind the rare, marked and unmarked names'
+                       : 'Not built for this file — run `make build_name_viewer_with_raw`';
+  const requested = d.k!=null ? ` of ${(d.k*d.total_lines).toLocaleString()} requested` : '';
+  const old = hasOld(d) ? `<span>unique, old rule: <b>${d.n_unique_old}</b> (Δ ${delta(d)>0?'+':''}${delta(d)})</span>` : '';
+  return `<div class="detail-head">
+      <h2>${escapeHtml(d.file)}</h2>
+      <div class="meta">
+        <span><b>${d.source}</b></span><span><b>${d.condition}</b></span>
+        <span>${d.model}</span><span>${d.task}</span>
+        <span>rep ${d.replicate}</span><span>temp ${d.temp}</span>
+        ${d.k!=null ? `<span>k = ${d.k}</span>` : ''}
+        <span>answers: ${d.total_lines}</span>
+      </div>
+      <div class="meta">
+        <span>items counted: <b>${d.n_items.toLocaleString()}</b>${requested}</span>
+        <span>unique counted: <b>${d.n_unique}</b></span>
+        ${old}
+        <span>marked incorrect: <b>${d.n_unique_incorrect}</b> unique (${d.n_items_incorrect.toLocaleString()} items)</span>
+        <span>rows: ${statusSummary(d)}</span>
+      </div>
+      <div class="viewtabs">
+        <label class="${raw?'':'on'}"><input type="radio" name="vmode" value="extracted" ${raw?'':'checked'}> extracted names</label>
+        <label class="${can?(raw?'on':''):'off'}" title="${rawTitle}">
+          <input type="radio" name="vmode" value="raw" ${raw?'checked':''} ${can?'':'disabled'}> ${rawLabel}</label>
+      </div>
+    </div>`;
+}
+
+async function renderDetail(){
+  const el = document.getElementById('detail');
+  if(selectedIdx===null){ el.className='empty'; el.textContent='Select a file on the left to view its unique names.'; return; }
+  const d = DATA[selectedIdx];
+  if(viewMode==='raw' && !d.has_raw) viewMode='extracted';   // no raw tier for this file
+  el.className='';
+  el.innerHTML = detailHead(d) + '<div id="detailbody" class="empty">Loading…</div>';
+  el.querySelectorAll('input[name=vmode]').forEach(r=>r.onchange=()=>{
+    if(r.checked && r.value!==viewMode){ viewMode=r.value; rawSearch=''; renderDetail(); }
+  });
+  const body = el.querySelector('#detailbody');
+  if(viewMode==='raw') await renderRaw(body, d);
+  else await renderExtracted(body, d);
+}
+
+// One row per distinct name across the four lists of a file. A name can play several
+// roles (counted in one answer, marked incorrect in another); every count is shown and
+// the tag names the role that is NOT "counted", or the change against the old rule.
+function nameEntries(detail, withOld){
+  const maps = {};
+  for(const key of ['counted','old','incorrect','unmarked']){
+    maps[key] = new Map((detail[key]||[]).map(x=>[x[2], x]));
+  }
+  const norms = new Set([...maps.counted.keys(), ...maps.incorrect.keys(), ...maps.unmarked.keys(),
+                         ...(withOld ? maps.old.keys() : [])]);
+  return [...norms].map(norm=>{
+    const c = maps.counted.get(norm), o = maps.old.get(norm), x = maps.incorrect.get(norm), u = maps.unmarked.get(norm);
+    const e = { norm, display: (c||x||u||o)[0], counted: c?c[1]:0, old: o?o[1]:0, incorrect: x?x[1]:0, unmarked: u?u[1]:0 };
+    if(withOld && e.counted && !e.old) e.tag = 'new';           // counts now, not under the old rule
+    else if(withOld && !e.counted && e.old) e.tag = 'dropped';  // counted under the old rule, not now
+    else if(!e.counted && e.incorrect) e.tag = 'incorrect';
+    else if(!e.counted && e.unmarked) e.tag = 'unmarked';
+    else e.tag = '';
+    return e;
+  });
+}
+
+async function renderExtracted(el, d){
+  let detail;
+  try {
+    const shard = await loadShard(d.shard);
+    detail = shard[d.key];
+  } catch(err){
+    if(DATA[selectedIdx]===d){ el.className='empty'; el.textContent='Failed to load details: '+err.message; }
+    return;
+  }
+  // A different file may have been clicked while this shard was fetching.
+  if(DATA[selectedIdx]!==d || viewMode!=='extracted') return;
+  if(!detail){ el.className='empty'; el.textContent='No details found for this file.'; return; }
+  el.className='';
+  const withOld = hasOld(d) && Array.isArray(detail.old);
+  const entries = nameEntries(detail, withOld);
+  const n = tag => entries.filter(e=>e.tag===tag).length;
+
+  const badges = [
+    `<span class="badge counted">counted: ${d.n_unique} unique</span>`,
+    `<span class="badge incorrect" title="items the extractor marked [incorrect]">marked incorrect: ${d.n_unique_incorrect} unique</span>`,
+    d.n_unique_unmarked ? `<span class="badge unmarked" title="names of rows whose wrong item is unmarked; none of them counts">unmarked: ${d.n_unique_unmarked} unique in ${d.status[2]} rows</span>` : '',
+    withOld ? `<span class="badge new" title="count now but not under the old rule">new vs old rule: ${n('new')}</span>` : '',
+    withOld ? `<span class="badge dropped" title="counted under the old rule but not now">dropped vs old rule: ${n('dropped')}</span>` : '',
+  ].filter(Boolean).join('');
+  const shows = [['all','all'], ['counted','counted only'], ['incorrect','marked incorrect'], ['unmarked','unmarked']]
+    .concat(withOld ? [['changed','changed vs old rule']] : []);
+  if(!shows.some(([v])=>v===nameShow)) nameShow = 'all';
+  const rareCap = d.has_raw ? (d.raw_max_count || 0) : 0;
+  el.innerHTML = `
+    <div class="toolbar">${badges}</div>
+    <div class="toolbar">
+      <input id="namesearch" type="text" placeholder="search names…" value="${nameSearch.replace(/"/g,'&quot;')}">
+      ${shows.map(([v,l])=>`<label><input type="radio" name="nshow" value="${v}" ${v===nameShow?'checked':''}> ${l}</label>`).join('')}
+      <span style="margin-left:auto;color:#888">${rareCap?`names counted under ${rareCap} times, and every marked or unmarked one, link to their completions · `:''}click a column header to sort</span>
+    </div>
+    <div class="names">
+      <table>
+        <thead><tr>
+          <th data-s="display">name</th><th data-s="counted" title="answers in which it counted">counted</th>
+          ${withOld?'<th data-s="old" title="count under the rule before 2026-09-29">old rule</th>':''}
+          <th data-s="incorrect" title="answers in which the extractor marked it [incorrect]">marked incorrect</th>
+          <th data-s="unmarked" title="unmarked rows listing it (none of which counts)">unmarked</th>
+          <th data-s="tag"></th>
+        </tr></thead>
+        <tbody id="namerows"></tbody>
+      </table>
+    </div>`;
+
+  const draw = ()=>{
+    let rows = entries.filter(e=>
+      (!nameSearch || e.display.toLowerCase().includes(nameSearch) || e.norm.includes(nameSearch)) &&
+      (nameShow==='all' || (nameShow==='counted' && e.counted>0) || (nameShow==='incorrect' && e.incorrect>0) ||
+       (nameShow==='unmarked' && e.unmarked>0) || (nameShow==='changed' && (e.tag==='new'||e.tag==='dropped')))
+    );
+    rows.sort((a,b)=>{
+      if(nameSort==='display') return a.display.localeCompare(b.display);
+      if(nameSort==='tag') return a.tag.localeCompare(b.tag) || b.counted-a.counted;
+      if(nameSort==='old') return b.old-a.old;
+      if(nameSort==='incorrect') return b.incorrect-a.incorrect;
+      if(nameSort==='unmarked') return b.unmarked-a.unmarked;
+      return b.counted-a.counted || b.incorrect-a.incorrect || b.unmarked-a.unmarked;
+    });
+    const TAG_TEXT = {new:'new vs old rule', dropped:'dropped vs old rule', incorrect:'marked incorrect', unmarked:'unmarked'};
+    document.getElementById('namerows').innerHTML = rows.map(e=>{
+      const tag = e.tag ? `<span class="tag ${e.tag}">${TAG_TEXT[e.tag]}</span>` : '';
+      // Names with a raw view are a jump-off point into it.
+      const linkable = rareCap && ((e.counted>0 && e.counted<rareCap) || e.incorrect>0 || e.unmarked>0);
+      const name = linkable
+        ? `<span class="rare-link" data-norm="${escapeHtml(e.norm)}" title="show the completions behind this name">${escapeHtml(e.display)}</span>`
+        : escapeHtml(e.display);
+      return `<tr class="${e.tag?'row-'+e.tag:''}"><td>${name}</td>
+        <td>${e.counted||''}</td>${withOld?`<td>${e.old||''}</td>`:''}<td>${e.incorrect||''}</td><td>${e.unmarked||''}</td><td>${tag}</td></tr>`;
+    }).join('') || `<tr><td colspan="${withOld?6:5}" style="color:#999;padding:20px">no names match</td></tr>`;
+    el.querySelectorAll('.rare-link').forEach(s=>s.onclick=()=>{
+      viewMode='raw'; rawName=s.dataset.norm; rawSearch=''; renderDetail();
+    });
+  };
+
+  el.querySelector('#namesearch').oninput = (ev)=>{ nameSearch=ev.target.value.toLowerCase(); draw(); };
+  el.querySelectorAll('input[name=nshow]').forEach(r=>r.onchange=()=>{ nameShow=r.value; draw(); });
+  el.querySelectorAll('th[data-s]').forEach(th=>th.onclick=()=>{ nameSort=th.dataset.s; draw(); });
+  draw();
+}
+
+// The role(s) that put a name in the raw tier: counted fewer than max_count times,
+// marked [incorrect], or listed in an unmarked row.
+function rareRoles(v){
+  return [v.c!=null?`counted ${v.c}`:'', v.x?`incorrect ${v.x}`:'', v.u?`unmarked ${v.u}`:''].filter(Boolean).join(', ');
+}
+
+// The extractor's output with the [incorrect] marker and any preamble made visible.
+function markupExtracted(e){
+  let s = escapeHtml(e);
+  s = s.replace(/\[incorrect\]\s*/gi, '<span class="mk">[incorrect]</span> ');
+  const m = s.match(/^((?:no|not|multiple)\b[^,]*?\.)(\s|$)/i);   // name_utils._split_preamble
+  if(m) s = `<span class="pre">${m[1]}</span>` + s.slice(m[1].length);
+  return s;
+}
+
+async function renderRaw(el, d){
+  let p;
+  try {
+    p = await loadRaw(d.raw_id);
+  } catch(err){
+    if(DATA[selectedIdx]===d){ el.className='empty'; el.textContent='Failed to load raw data: '+err.message; }
+    return;
+  }
+  if(DATA[selectedIdx]!==d || viewMode!=='raw') return;   // a different file was clicked
+  if(!p){
+    el.className='empty';
+    el.innerHTML = 'No raw data for this file.<br><span style="font-size:12px">'
+                 + 'Build it with <code>make build_name_viewer_with_raw</code>.</span>';
+    return;
+  }
+  el.className='';
+
+  const rare = Object.entries(p.rare)
+    .sort((a,b)=> ((b[1].c||0)+(b[1].x||0)+(b[1].u||0)) - ((a[1].c||0)+(a[1].x||0)+(a[1].u||0)) || a[1].d.localeCompare(b[1].d));
+  if(rawName && !p.rare[rawName]) rawName='';   // selection doesn't apply to this file
+  const opts = [`<option value="">(all ${p.n_rare} names — ${p.n_lines} completions)</option>`]
+    .concat(rare.map(([norm,v])=>
+      `<option value="${escapeHtml(norm)}" ${norm===rawName?'selected':''}>${escapeHtml(v.d)} (${rareRoles(v)})</option>`));
+
+  // Deliberately neutral: most non-matches are the extractor rewording or respelling a
+  // name, which is expected. Only a block-shaped pattern of flags points at a genuinely
+  // misaligned extraction file, so state the fact and let the reader judge.
+  const mismatchWarn = p.n_mismatch ? `<div class="warn">
+      <b>${p.n_mismatch} of ${p.n_lines}</b> completions below (${Math.round((1-p.align)*100)}%) don't contain any of their
+      extracted names verbatim. Usually that is the extractor rewording or respelling them. If instead the flags fall in
+      contiguous blocks of lines, the extraction file is misaligned with this raw output and those pairings are wrong.
+      </div>` : '';
+
+  el.innerHTML = `
+    ${mismatchWarn}
+    <div class="toolbar">
+      <label style="color:#666">name<select id="rawname" style="margin-left:6px;max-width:360px;font-size:12px;padding:3px">${opts.join('')}</select></label>
+      <input id="rawsearch" type="text" placeholder="search completions…" value="${rawSearch.replace(/"/g,'&quot;')}">
+      <span id="rawcount" style="margin-left:auto;color:#888"></span>
+    </div>
+    <div class="raws" id="rawcards"></div>`;
+
+  const draw = ()=>{
+    const lineNos = (rawName ? p.rare[rawName].l : Object.keys(p.lines).map(Number))
+      .slice().sort((a,b)=>a-b);
+    const q = rawSearch.toLowerCase();
+    const hits = lineNos.filter(ln=>{
+      const r = p.lines[ln];
+      return r && (!q || (r.c||'').toLowerCase().includes(q) || (r.e||'').toLowerCase().includes(q));
+    });
+    const shown = hits.slice(0, RAW_CARD_LIMIT);
+    document.getElementById('rawcount').textContent =
+      shown.length < hits.length ? `showing ${shown.length} of ${hits.length} completions`
+                                 : `${hits.length} completion${hits.length===1?'':'s'}`;
+    document.getElementById('rawcards').innerHTML = shown.map(ln=>{
+      const r = p.lines[ln];
+      const trunc = r.cn ? `\n…(truncated from ${r.cn.toLocaleString()} chars)` : '';
+      let doc = '';
+      if(r.doc){
+        const cut = r.doc.n > r.doc.t.length;
+        const src = r.doc.s ? ` · ${escapeHtml(r.doc.s)}` : '';
+        doc = `<details class="doc"><summary>prepended doc (${r.doc.n.toLocaleString()} chars${cut?', preview':''}${src})</summary>`
+            + `<pre>${escapeHtml(r.doc.t)}${cut?'\n…(truncated)':''}</pre></details>`;
+      }
+      const status = r.s ? `<span class="tag status" title="${STATUS_HELP[r.s]||''}">row: ${r.s}</span>` : '';
+      return `<div class="gen ${r.x?'mismatch':''}">
+        <div class="ghead"><span>line ${ln}</span><span>completion #${r.i}</span><span>${escapeHtml(r.p||'')}</span>${status}
+          ${r.x?'<span class="tag mismatch" title="none of the extracted names appears verbatim in this completion">no verbatim match</span>':''}</div>
+        <div class="txt">${escapeHtml(r.c)||'<i style="color:#999">(empty completion)</i>'}${trunc}</div>
+        <div class="ext">extracted: <b>${markupExtracted(r.e)||'<i>(none)</i>'}</b></div>
+        ${doc}</div>`;
+    }).join('') || '<div class="empty">no completions match</div>';
+  };
+
+  el.querySelector('#rawname').onchange = (ev)=>{ rawName=ev.target.value; draw(); };
+  el.querySelector('#rawsearch').oninput = (ev)=>{ rawSearch=ev.target.value; draw(); };
+  draw();
+}
+
+// Coerce first: doc_source is a URL string for dolma but a numeric id for compactds.
+function escapeHtml(s){ return String(s ?? '').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+['f-source','f-condition','f-model','f-category','f-k','f-replicate','f-temp','f-sort'].forEach(id=>document.getElementById(id).onchange=()=>{selectedIdx=null;renderFileList();renderDetail();});
+document.getElementById('f-file').oninput=()=>{selectedIdx=null;renderFileList();renderDetail();};
+
+async function init(){
+  const detail = document.getElementById('detail');
+  detail.className='empty'; detail.textContent='Loading index…';
+  try {
+    DATA = await fetchGzipJson('index.json.gz');
+  } catch(err){
+    detail.className='empty';
+    detail.textContent='Failed to load index.json.gz ('+err.message+'). Serve this folder over HTTP (e.g. `make view_name_viewer`).';
+    return;
+  }
+  fill('f-source', uniq(DATA.map(d=>d.source)));
+  fill('f-condition', uniqCond(DATA.map(d=>d.condition)));
+  fill('f-model', uniq(DATA.map(d=>d.model)));
+  fill('f-category', uniq(DATA.map(d=>d.category)));
+  // k ascending; tasks that are not lists (k null) last
+  fill('f-k', [...new Set(DATA.map(d=>String(d.k)))].sort((a,b)=>(a==='null')-(b==='null') || parseFloat(a)-parseFloat(b)), kLabel);
+  fill('f-replicate', uniqNum(DATA.map(d=>d.replicate)));
+  fill('f-temp', uniqNum(DATA.map(d=>d.temp)));
+  detail.textContent='Select a file on the left to view its unique names.';
+  renderFileList();
+}
+init();
+</script>
+</body>
+</html>
